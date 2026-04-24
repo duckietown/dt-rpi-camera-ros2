@@ -25,8 +25,9 @@ Building the Pi fork from source is currently the only reliable path.
 
 ## Hardware
 
-Tested on DD24 (Raspberry Pi 4, OV5647). The build also includes the
-`pisp` pipeline for Pi 5 so the same image works on newer hardware.
+Tested on DD24 (Raspberry Pi 4, OV5647). Only the `vc4` libcamera
+pipeline is enabled; add `rpi/pisp` and bump `LIBCAMERA_REF` when we
+need Pi 5 support.
 
 ## Build
 

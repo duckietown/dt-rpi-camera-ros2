@@ -24,15 +24,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG LIBCAMERA_REF=v0.4.0
 ARG CAMERA_ROS_REF=v0.6.0
 
-# Build the Raspberry Pi libcamera fork. Includes vc4 (Pi 4/CM4) and pisp (Pi 5)
-# pipelines so the same image works across DD24 hardware variants.
+# Build the Raspberry Pi libcamera fork. Only the vc4 pipeline is enabled
+# because the DD24 target is Pi 4; libcamera v0.4.0 predates the pisp
+# (Pi 5) pipeline. Bump LIBCAMERA_REF and re-add pisp when we move to Pi 5.
 RUN git clone --depth 1 --branch "${LIBCAMERA_REF}" \
         https://github.com/raspberrypi/libcamera.git /tmp/libcamera \
   && cd /tmp/libcamera \
   && meson setup build \
         --buildtype=release \
-        -Dpipelines=rpi/vc4,rpi/pisp \
-        -Dipas=rpi/vc4,rpi/pisp \
+        -Dpipelines=rpi/vc4 \
+        -Dipas=rpi/vc4 \
         -Dv4l2=true \
         -Dgstreamer=enabled \
         -Dtest=false \
