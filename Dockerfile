@@ -53,10 +53,13 @@ RUN mkdir -p /app/src \
         https://github.com/christianrauch/camera_ros.git /app/src/camera_ros \
   && source /opt/ros/$ROS_DISTRO/setup.bash \
   && cd /app \
+  && apt-get update \
   && rosdep update \
   && rosdep install -y --from-paths src --ignore-src \
-        --rosdistro $ROS_DISTRO --skip-keys=libcamera \
-  && colcon build --event-handlers=console_direct+
+        --rosdistro $ROS_DISTRO \
+        --skip-keys="libcamera ament_cmake_clang_format ament_cmake_clang_tidy" \
+  && colcon build --event-handlers=console_direct+ \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY docker_entrypoint.sh /app/
 RUN chmod +x /app/docker_entrypoint.sh
