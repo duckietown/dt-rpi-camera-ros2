@@ -1,60 +1,83 @@
-# camera_ros in Docker on a RPi5 via Rasbian Bookworm 64bit lite
+# dt-rpi-camera-ros2
 
-An example of how to use [`camera_ros`](https://github.com/christianrauch/camera_ros/) with Raspberry Pi Cameras modules inside an arm64v8/ros:jazzy docker container, running on top of Raspbian OS 64bit Lite (Bookworm).
+Raspberry Pi CSI camera driver for the Duckietown ROS 2 stack. Runs
+[`camera_ros`](https://github.com/christianrauch/camera_ros/) inside an
+`arm64v8/ros:jazzy` container with the Raspberry Pi fork of `libcamera`
+built from source.
 
-The example builds and installs raspberrypi's fork of libcamera for support of Raspberry Pi camera modules.
+Forked from [nguyen-v/camera_rpi5_ros2_docker](https://github.com/nguyen-v/camera_rpi5_ros2_docker).
+Changes:
 
-## Requirements
+- Pinned `libcamera` to `v0.4.0` and `camera_ros` to `v0.6.0`.
+- Added `ros-jazzy-rmw-zenoh-cpp` so it speaks to the rest of the DT ROS 2
+  stack via Zenoh.
+- DT-style entrypoint driven by `VEHICLE_NAME`, `CAMERA_WIDTH`,
+  `CAMERA_HEIGHT`, `CAMERA_FPS`, with explicit topic remaps
+  (including `image_raw/compressed` — it does not inherit from
+  `image_raw` via image_transport).
 
-- Raspberry Pi 5 (4BG Model tested)
-- Rasbian OS 64Bit Lite (Bookworm)
-- Docker
+Why not `apt install ros-jazzy-camera-ros`? That package depends on
+`ros-jazzy-libcamera 0.7.0`, whose Raspberry Pi IPA proxy has an ARM64
+serializer regression that crashes before the first frame
+(`FATAL ControlSerializer: A list of V4L2 controls requires a ControlInfoMap`).
+Ubuntu Noble's stock `libcamera 0.2` has an OV5647 `prepareIsp()` IPA bug.
+Building the Pi fork from source is currently the only reliable path.
 
-### Tested Cameras
-- Raspberry Pi Cam rev1.3 (OV5647)
-- Raspberry Pi NoIR Cam (OV5647)
-- Raspberry Pi Camera 3 (IMX708) - thanks to @dbaldwin for reporting
+## Hardware
 
-Note: In my testing I did not need to change any parameters in `/boot/firmware/config.txt` on the host OS.
-
-### References
- - https://github.com/christianrauch/camera_ros/
- - https://github.com/raspberrypi/libcamera/
-
-## Setup
-
-Clone this repo and make sure `docker-run.sh` is executable.
-
-```
-git clone git@github.com:se1exin/camera_ros-in-docker-rpi5.git
-
-cd camera_ros-in-docker-rpi5
-
-chmod +x docker-run.sh
-
-```
+Tested on DD24 (Raspberry Pi 4, OV5647). The build also includes the
+`pisp` pipeline for Pi 5 so the same image works on newer hardware.
 
 ## Build
-From the command line on your raspberry pi, run the following to build the container with the tag `camera_ros`:
+
+On the target Pi (or any arm64 host):
 
 ```
-docker build -t camera_ros .
+docker build -t duckietown/dt-rpi-camera-ros2:ente-arm64v8 .
 ```
 
 ## Run
-Note: The docker build process adds the file `docker_entrypoint.sh` which sources the required ROS2 `setup.bash` files when the container starts.
 
-From the command line, run the following to start the docker container and the camera_ros node:
+Published topics (with `VEHICLE_NAME=drone01`):
 
+- `/drone01/image` (raw)
+- `/drone01/image/compressed`
+- `/drone01/camera_info`
+
+Typical invocation via the DT ROS 2 duckiedrone stack:
+
+```yaml
+camera:
+  image: ${REGISTRY}/duckietown/dt-rpi-camera-ros2:ente-${ARCH}
+  container_name: ros2-camera
+  restart: unless-stopped
+  network_mode: host
+  privileged: true
+  environment:
+    VEHICLE_NAME: ${ROBOT_NAME}
+    ROS_DOMAIN_ID: 42
+    RMW_IMPLEMENTATION: rmw_zenoh_cpp
+  volumes:
+    - /dev:/dev
+    - /run/udev:/run/udev:ro
+  depends_on:
+    - zenoh-router
 ```
-./docker-run.sh
-```
 
+Environment variables honored by the entrypoint:
 
-## Modify
-The last line of `docker-run.sh` is the command sent to the docker container when it starts. Modify this to - for example - change any ros params when starting the node.
+| Variable | Default | Notes |
+|---|---|---|
+| `VEHICLE_NAME` | _(required)_ | Used as topic namespace |
+| `CAMERA_WIDTH` | `640` | |
+| `CAMERA_HEIGHT` | `480` | |
+| `CAMERA_FPS` | `30` | Applied via `FrameDurationLimits` |
 
-## Notes
-You can view the camera stream on another computer using `ros2 run rqt_image_view rqt_image_view`.
+Override by passing a different `CMD` (the entrypoint execs any argv that
+isn't the literal `launch-camera`).
 
-Note you may need to add your other IP address as `ROS_STATIC_PEERS` to the docker container to assist ROS2 network communication. E.g. add `-e ROS_STATIC_PEERS=some.internal.ip.address` to the `docker-run.sh` script.  
+## References
+
+- [christianrauch/camera_ros](https://github.com/christianrauch/camera_ros/)
+- [raspberrypi/libcamera](https://github.com/raspberrypi/libcamera/)
+- Jira: DTSW-7758

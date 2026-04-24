@@ -1,34 +1,64 @@
-
 FROM arm64v8/ros:jazzy
 
 SHELL ["/bin/bash", "-c"]
 
 WORKDIR /app
 
-# Install Dependencies for libcamera. Working as of https://github.com/raspberrypi/libcamera/commit/8cebd777cae428daf415998cc588fe60c6de0d66
-RUN apt update && apt install -y git python3-pip git python3-jinja2 \
+# libcamera build deps + ROS 2 Zenoh RMW (matches the DT ROS 2 stack)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git python3-pip python3-jinja2 python3-yaml python3-ply \
+      meson cmake ninja-build pkg-config \
       libboost-dev \
       libgnutls28-dev openssl libtiff-dev pybind11-dev \
-      meson cmake \
-      python3-yaml python3-ply \
-      libglib2.0-dev libgstreamer-plugins-base1.0-dev
+      libglib2.0-dev libgstreamer-plugins-base1.0-dev \
+      libyaml-dev libssl-dev libudev-dev libevent-dev libcap-dev \
+      libdw-dev libunwind-dev libjpeg-turbo8-dev \
+      v4l-utils \
+      ros-jazzy-rmw-zenoh-cpp \
+    && rm -rf /var/lib/apt/lists/*
 
-# Clone and build raspberrypi's libcamera fork
-RUN git clone https://github.com/raspberrypi/libcamera.git \
-  && cd libcamera \
-  && meson setup build --buildtype=release -Dpipelines=rpi/vc4,rpi/pisp -Dipas=rpi/vc4,rpi/pisp -Dv4l2=true -Dgstreamer=enabled -Dtest=false -Dlc-compliance=disabled -Dcam=disabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=enabled \
-  && ninja -C build install
+# Pinned refs (bump here to upgrade).
+# libcamera v0.4.0: last release without the ARM64 Pi IPA serializer regression
+# that ships in ros-jazzy-libcamera 0.7.0.
+# camera_ros v0.6.0: known-good against libcamera 0.4.x.
+ARG LIBCAMERA_REF=v0.4.0
+ARG CAMERA_ROS_REF=v0.6.0
 
-# Clone and build the camera_ros node
+# Build the Raspberry Pi libcamera fork. Includes vc4 (Pi 4/CM4) and pisp (Pi 5)
+# pipelines so the same image works across DD24 hardware variants.
+RUN git clone --depth 1 --branch "${LIBCAMERA_REF}" \
+        https://github.com/raspberrypi/libcamera.git /tmp/libcamera \
+  && cd /tmp/libcamera \
+  && meson setup build \
+        --buildtype=release \
+        -Dpipelines=rpi/vc4,rpi/pisp \
+        -Dipas=rpi/vc4,rpi/pisp \
+        -Dv4l2=true \
+        -Dgstreamer=enabled \
+        -Dtest=false \
+        -Dlc-compliance=disabled \
+        -Dcam=disabled \
+        -Dqcam=disabled \
+        -Ddocumentation=disabled \
+        -Dpycamera=enabled \
+  && ninja -C build install \
+  && ldconfig \
+  && rm -rf /tmp/libcamera
+
+# Build camera_ros against the libcamera we just installed. --skip-keys=libcamera
+# prevents rosdep from pulling the broken ros-jazzy-libcamera apt package.
 RUN mkdir -p /app/src \
-  && cd /app/src \
-  && git clone https://github.com/christianrauch/camera_ros.git \
+  && git clone --depth 1 --branch "${CAMERA_ROS_REF}" \
+        https://github.com/christianrauch/camera_ros.git /app/src/camera_ros \
   && source /opt/ros/$ROS_DISTRO/setup.bash \
   && cd /app \
-  && rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO --skip-keys=libcamera \
+  && rosdep update \
+  && rosdep install -y --from-paths src --ignore-src \
+        --rosdistro $ROS_DISTRO --skip-keys=libcamera \
   && colcon build --event-handlers=console_direct+
 
 COPY docker_entrypoint.sh /app/
+RUN chmod +x /app/docker_entrypoint.sh
 
 ENTRYPOINT ["/app/docker_entrypoint.sh"]
-CMD ["bash"]
+CMD ["launch-camera"]
