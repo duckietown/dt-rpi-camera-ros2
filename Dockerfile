@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # that ships in ros-jazzy-libcamera 0.7.0.
 # camera_ros v0.6.0: known-good against libcamera 0.4.x.
 ARG LIBCAMERA_REF=v0.4.0
-ARG CAMERA_ROS_REF=v0.6.0
+ARG CAMERA_ROS_REF=0.6.0
 
 # Build the Raspberry Pi libcamera fork. Only the vc4 pipeline is enabled
 # because the DD24 target is Pi 4; libcamera v0.4.0 predates the pisp
